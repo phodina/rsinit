@@ -88,6 +88,8 @@ pub fn mount_root(
 }
 
 pub fn mount_move(src: &str, dst: &str, cleanup: bool) -> Result<()> {
+    ensure_mountpoint(dst)?;
+
     mount(
         Some(Path::new(src)),
         dst,
@@ -102,6 +104,25 @@ pub fn mount_move(src: &str, dst: &str, cleanup: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn ensure_mountpoint(dst: &str) -> Result<()> {
+    // Don't follow symlinks: a dangling one is left for mount(2) to report.
+    if fs::symlink_metadata(dst).is_ok() {
+        return Ok(());
+    }
+    match fs::create_dir(dst) {
+        Ok(()) => Ok(()),
+        Err(e) if is_read_only_fs_error(&e) => {
+            warn!("mount_move: {dst} is missing and its parent is read-only; cannot create it");
+            Ok(())
+        }
+        Err(e) => Err(format!("creating mountpoint {dst}: {e}").into()),
+    }
+}
+
+fn is_read_only_fs_error(e: &std::io::Error) -> bool {
+    e.raw_os_error() == Some(nix::libc::EROFS)
 }
 
 pub fn mount_special() -> Result<()> {
@@ -123,6 +144,7 @@ pub fn mount_special() -> Result<()> {
         MsFlags::MS_NOSUID | MsFlags::MS_NOEXEC | MsFlags::MS_NODEV,
         None,
     )?;
+
     Ok(())
 }
 
