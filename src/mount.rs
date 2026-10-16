@@ -145,6 +145,22 @@ pub fn mount_special() -> Result<()> {
         None,
     )?;
 
+    // devtmpfs gives us real device nodes, but not these conventional
+    // symlinks
+    for (link, target) in [
+        ("/dev/fd", "/proc/self/fd"),
+        ("/dev/stdin", "/proc/self/fd/0"),
+        ("/dev/stdout", "/proc/self/fd/1"),
+        ("/dev/stderr", "/proc/self/fd/2"),
+    ] {
+        match std::os::unix::fs::symlink(target, link) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            // Not fatal so boot can continue without these conveniences
+            Err(e) => warn!("mount_special: symlink {link} -> {target} failed: {e}"),
+        }
+    }
+
     Ok(())
 }
 
